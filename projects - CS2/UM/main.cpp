@@ -1,4 +1,5 @@
 #include "../../cs2/shared/shared.h"
+#include "../../cs2/shared/mouse.h"
 #include <SDL3/SDL.h>
 #pragma comment(lib, "SDL3.lib")
 
@@ -8,7 +9,7 @@ namespace client
 {
 	void mouse_move(int x, int y)
 	{
-		mouse_event(MOUSEEVENTF_MOVE, (DWORD)x, (DWORD)y, 0, 0);
+		_driver->MouseMove(x,y);
 	}
 
 	void mouse1_down(void)
@@ -47,16 +48,17 @@ namespace client
 
 int main(void)
 {
-	if (SDL_Init(SDL_INIT_VIDEO) < 0) {
-		return 0;
-	}
-
-	SDL_Window *window = SDL_CreateWindow("EC", 640, 480, SDL_WINDOW_TRANSPARENT | SDL_WINDOW_BORDERLESS);
-	if (window == NULL)
+	if (SDL_Init(SDL_INIT_VIDEO) < 0) 
 	{
 		return 0;
 	}
 
+	SDL_Window *window = SDL_CreateWindow("IN", 640, 480, SDL_WINDOW_TRANSPARENT | SDL_WINDOW_BORDERLESS);
+	if (window == NULL)
+	{
+		return 0;
+	}
+	SetConsoleTitleA("IN");
 	SDL_DisplayID id = SDL_GetDisplayForWindow(window);
 	const SDL_DisplayMode *disp = SDL_GetCurrentDisplayMode(id);
 	SDL_SetWindowSize(window, disp->w, disp->h);
@@ -78,6 +80,7 @@ int main(void)
 				break;
 			}
 		}
+		_driver->Init();
 		cs2::run();
 		SDL_UpdateWindowSurface(window);
 		SDL_FillSurfaceRect(sdl_surface, NULL, 0x000000);
