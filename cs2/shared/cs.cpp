@@ -22,7 +22,6 @@ namespace cs
 	namespace direct
 	{
 		static QWORD local_player;
-		static QWORD view_angles;
 		static QWORD view_matrix;
 		static DWORD button_state;
 	}
@@ -32,6 +31,9 @@ namespace cs
 		static QWORD sensitivity;
 		static QWORD mp_teammates_are_enemies;
 		static QWORD cl_crosshairalpha;
+		static QWORD aimbot_enabled;
+		static QWORD triggerbot_enabled;
+		static QWORD esp_enabled;
 	}
 
 	namespace netvars
@@ -53,6 +55,12 @@ namespace cs
 		static int m_vOldOrigin = 0;
 		static int m_pClippingWeapon = 0;
 		static int v_angle = 0;
+		static int m_entitySpottedState = 0;
+		static int m_bSpottedByMask = 0;
+		static int m_bIsScoped = 0;
+		static int m_AttributeManager = 0;
+		static int m_Item = 0;
+		static int m_iItemDefinitionIndex = 0;
 	}
 
 	static BOOL initialize(void);
@@ -72,16 +80,8 @@ interfaces::player = vm::get_relative_address(game_handle, get_interface_functio
 interfaces::player = vm::read_i64(game_handle, interfaces::player);
 */
 
-
-inline const char *get_process_name() { return vm::get_target_os() == VmOs::Windows ? "cs2.exe" : "cs2"; }
-inline const char *get_client_name() { return vm::get_target_os() == VmOs::Windows ? "client.dll" : "libclient.so"; }
-inline const char *get_engine_name() { return vm::get_target_os() == VmOs::Windows ? "engine2.dll" : "libengine2.so"; }
-inline const char *get_sdl3_name() { return vm::get_target_os() == VmOs::Windows ? "SDL3.dll" : "libSDL3.so.0"; }
-inline const char *get_tier0_name() { return vm::get_target_os() == VmOs::Windows ? "tier0.dll" : "libtier0.so"; }
-inline const char *get_inputsystem_name() { return vm::get_target_os() == VmOs::Windows ? "inputsystem.dll" : "libinputsystem.so"; }
-inline int get_entity_off() { return vm::get_target_os() == VmOs::Windows ? 0x58 : 0x50; }
-inline int get_button_off() { return vm::get_target_os() == VmOs::Windows ? 0x0E : 0x11; }
-inline int get_viewangles_off() { return vm::get_target_os() == VmOs::Windows ? 0x6140 : 0x4528; }
+inline int get_entity_off() { return 0x58; }
+inline int get_button_off() { return 0x0E; }
 
 #ifdef DEBUG
 
@@ -110,19 +110,21 @@ static BOOL cs::initialize(void)
 		game_handle = 0;
 	}
 
-	game_handle = vm::open_process_ex(get_process_name(), get_client_name());
+	game_handle = vm::open_process_ex("cs2.exe", "client.dll");
 	if (!game_handle)
 	{
-		LOG("CS2 process not found\n");
+#ifdef _DEBUG
+		LOG("target process not found.\n");
+#endif // DEBUG
 		return 0;
 	}
 
 	QWORD client_dll, sdl, inputsystem;
-	JZ(client_dll = vm::get_module(game_handle, get_client_name()), E1);
-	JZ(sdl = vm::get_module(game_handle, get_sdl3_name()), E1);
-	JZ(inputsystem = vm::get_module(game_handle, get_inputsystem_name()), E1);
+	JZ(client_dll = vm::get_module(game_handle, "client.dll"), E1);
+	JZ(sdl = vm::get_module(game_handle, "SDL3.dll"), E1);
+	JZ(inputsystem = vm::get_module(game_handle, "inputsystem.dll"), E1);
 
-	interfaces::resource = get_interface(vm::get_module(game_handle, get_engine_name()), "GameResourceServiceClientV0");
+	interfaces::resource = get_interface(vm::get_module(game_handle, "engine2.dll"), "GameResourceServiceClientV0");
 	if (interfaces::resource == 0)
 	{
 	E1:
@@ -131,115 +133,88 @@ static BOOL cs::initialize(void)
 		return 0;
 	}
 	
-	if (vm::get_target_os() == VmOs::Linux)
-	{
-		JZ(sdl::sdl_window   = vm::get_module_export(game_handle, sdl, "SDL_GetKeyboardFocus"), E1);
-		sdl::sdl_window      = vm::get_relative_address(game_handle, sdl::sdl_window, 2, 6);
-		JZ(sdl::sdl_window   = vm::read_i64(game_handle, sdl::sdl_window), E1);
-		sdl::sdl_window      = vm::get_relative_address(game_handle, sdl::sdl_window, 3, 7);
-	}
-	else
-	{
-		JZ(sdl::sdl_window   = vm::get_module_export(game_handle, sdl, "SDL_GetKeyboardFocus"), E1);
-		sdl::sdl_window      = vm::get_relative_address(game_handle, sdl::sdl_window, 3, 7);
-		JZ(sdl::sdl_window   = vm::read_i64(game_handle, sdl::sdl_window), E1);
-		sdl::sdl_window      = vm::get_relative_address(game_handle, sdl::sdl_window, 3, 7);
+	JZ(sdl::sdl_window   = vm::get_module_export(game_handle, sdl,"SDL_GetKeyboardFocus"), E1);
+	sdl::sdl_window      = vm::get_relative_address(game_handle, sdl::sdl_window, 3, 7);
+	JZ(sdl::sdl_window   = vm::read_i64(game_handle, sdl::sdl_window), E1);
+	sdl::sdl_window      = vm::get_relative_address(game_handle, sdl::sdl_window, 3, 7);
 
-		JZ(sdl::sdl_mouse     = vm::get_module_export(game_handle, sdl, "SDL_GetMouseState"), E1);
-		sdl::sdl_mouse        = vm::get_relative_address(game_handle, sdl::sdl_mouse, 3, 7);
-		JZ(sdl::sdl_mouse     = vm::read_i64(game_handle, sdl::sdl_mouse), E1);
-		sdl::sdl_mouse        = vm::get_relative_address(game_handle, sdl::sdl_mouse + 0x10, 1, 5);
-		sdl::sdl_mouse        = vm::get_relative_address(game_handle, sdl::sdl_mouse + 0x00, 3, 7);
-	}
+	JZ(sdl::sdl_mouse     = vm::get_module_export(game_handle, sdl, "SDL_GetMouseState"), E1);
+	sdl::sdl_mouse        = vm::get_relative_address(game_handle, sdl::sdl_mouse, 3, 7);
+	JZ(sdl::sdl_mouse     = vm::read_i64(game_handle, sdl::sdl_mouse), E1);
+	sdl::sdl_mouse        = vm::get_relative_address(game_handle, sdl::sdl_mouse + 0x10, 1, 5);
+	sdl::sdl_mouse        = vm::get_relative_address(game_handle, sdl::sdl_mouse + 0x00, 3, 7);
 
 	JZ(interfaces::entity   = vm::read_i64(game_handle, interfaces::resource + get_entity_off()), E1);
 	interfaces::player      = interfaces::entity + 0x10;
 
-	JZ(interfaces::cvar     = get_interface(vm::get_module(game_handle, get_tier0_name()), "VEngineCvar0"), E1);
+	JZ(interfaces::cvar     = get_interface(vm::get_module(game_handle, "tier0.dll"), "VEngineCvar0"), E1);
 	JZ(interfaces::input    = get_interface(inputsystem, "InputSystemVersion0"), E1);
 	direct::button_state    = vm::read_i32(game_handle, get_interface_function(interfaces::input, 18) + get_button_off() + 5);
 
+	/*
+	JZ(direct::local_player = get_interface(client_dll, "Source2ClientPrediction0"), E1);
+	JZ(direct::local_player = get_interface_function(direct::local_player, 180), E1);
+	direct::local_player    = vm::get_relative_address(game_handle, direct::local_player + 0xF0, 3, 7);
+	*/
+	JZ(direct::local_player = vm::scan_pattern_direct(game_handle, client_dll, "\x48\x83\x3D\x00\x00\x00\x00\x00\x0F\x95\xC0\xC3", "xxx????xxxxx", 12), E1);
+	direct::local_player    = vm::get_relative_address(game_handle, direct::local_player, 3, 8);
 
-	if (vm::get_target_os() == VmOs::Linux)
-	{
-		JZ(direct::local_player = vm::scan_pattern_direct(game_handle, client_dll, "\x48\x83\x3D\x00\x00\x00\x00\x00\x0F\x95\xC0\xC3", "xxx????xxxxx", 12), E1);
-		direct::local_player    = vm::get_relative_address(game_handle, direct::local_player, 3, 8);
-	}
-	else
-	{
-		/*
-		JZ(direct::local_player = get_interface(client_dll, "Source2ClientPrediction0"), E1);
-		JZ(direct::local_player = get_interface_function(direct::local_player, 180), E1);
-		direct::local_player    = vm::get_relative_address(game_handle, direct::local_player + 0xF0, 3, 7);
-		*/
-		JZ(direct::local_player = vm::scan_pattern_direct(game_handle, client_dll, "\x48\x83\x3D\x00\x00\x00\x00\x00\x0F\x95\xC0\xC3", "xxx????xxxxx", 12), E1);
-		direct::local_player    = vm::get_relative_address(game_handle, direct::local_player, 3, 8);
-	}
-
-	JZ(direct::view_angles  = get_interface(client_dll, "Source2Client0"), E1);
-	direct::view_angles     = vm::get_relative_address(game_handle, get_interface_function(direct::view_angles, 16), 3, 7);
-	JZ(direct::view_angles  = vm::read_i64(game_handle, direct::view_angles), E1);
-	direct::view_angles     += get_viewangles_off();
-
-
-	if (vm::get_target_os() == VmOs::Linux)
-	{
-		//
-		// viewmatrix: 48 63 c6 48 c1 E0 06 48 03 05 ? ? ? ? C3 90
-		//
-		JZ(direct::view_matrix = vm::scan_pattern_direct(game_handle, client_dll, "\x48\x63\xc6\x48\xc1\xE0\x06\x48\x03\x05", "xxxxxxxxxx", 10), E1);
-		direct::view_matrix    = vm::get_relative_address(game_handle, direct::view_matrix + 0x07, 3, 7);
-		JZ(direct::view_matrix = vm::read_i64(game_handle, direct::view_matrix), E1);
-	}
-	else
-	{
-		//
-		// viewmatrix: 48 63 c2 48 8d 0d ? ? ? ? 48 c1
-		//
-		JZ(direct::view_matrix = vm::scan_pattern_direct(game_handle, client_dll, "\x48\x63\xc2\x48\x8d\x0d\x00\x00\x00\x00\x48\xc1", "xxxxxx????xx", 12), E1);
-		direct::view_matrix    = vm::get_relative_address(game_handle, direct::view_matrix + 0x03, 3, 7);
-	}
-
+	// viewmatrix: 48 63 c2 48 8d 0d ? ? ? ? 48 c1
+	JZ(direct::view_matrix = vm::scan_pattern_direct(game_handle, client_dll, "\x48\x63\xc2\x48\x8d\x0d\x00\x00\x00\x00\x48\xc1", "xxxxxx????xx", 12), E1);
+	direct::view_matrix    = vm::get_relative_address(game_handle, direct::view_matrix + 0x03, 3, 7);
+	
 	JZ(convars::sensitivity              = engine::get_convar("sensitivity"), E1);
 	JZ(convars::mp_teammates_are_enemies = engine::get_convar("mp_teammates_are_enemies"), E1);
 	JZ(convars::cl_crosshairalpha        = engine::get_convar("cl_crosshairalpha"), E1);
 
-	//
-	// to-do schemas
-	//
-	LOG("interfaces::cvar       %p\n", (void *)interfaces::cvar);
-	LOG("interfaces::input      %p\n", (void *)interfaces::input);
-	LOG("interfaces::resource   %p\n", (void *)interfaces::resource);
-	LOG("interfaces::entity     %p\n", (void *)interfaces::entity);
-	LOG("interfaces::player     %p\n", (void *)interfaces::player);
-	LOG("direct::local_player   %p\n", (void *)direct::local_player);
-	LOG("direct::view_angles    %p\n", (void *)direct::view_angles);
-	LOG("direct::view_matrix    %p\n", (void *)direct::view_matrix);
-	LOG("game is running\n");
+#ifdef _DEBUG
+	LOG("[interfaces] cvar      -> %p\n", (void *)interfaces::cvar);
+	LOG("[interfaces] input     -> %p\n", (void *)interfaces::input);
+	LOG("[interfaces] resource  -> %p\n", (void *)interfaces::resource);
+	LOG("[interfaces] entity    -> %p\n", (void *)interfaces::entity);
+	LOG("[interfaces] player    -> %p\n", (void *)interfaces::player);
+	LOG("[direct] local_player  -> %p\n", (void *)direct::local_player);
+	LOG("[direct] view_matrix   -> %p\n", (void *)direct::view_matrix);
+	LOG("[init] initialization done.\n");
+#endif // DEBUG
 
-	if (vm::get_target_os() == VmOs::Linux)
+	PVOID dump_client = vm::dump_module(game_handle, client_dll, VM_MODULE_TYPE::Full);
+	if (dump_client == 0)
 	{
-		PVOID dump_client = vm::dump_module(game_handle, client_dll, VM_MODULE_TYPE::Full);
-		if (dump_client == 0)
-		{
-			goto E1;
-		}
+		goto E1;
+	}
+	
+	QWORD dos_header = (QWORD)dump_client;
+	QWORD nt_header = (QWORD) * (DWORD*)(dos_header + 0x03C) + dos_header;
+	WORD  machine = *(WORD*)(nt_header + 0x4);
 
-		QWORD base = *(QWORD*)((QWORD)dump_client - 16);
-		QWORD size = *(QWORD*)((QWORD)dump_client - 8);
-		for (QWORD i = size - sizeof(QWORD); i--;)
+	QWORD section_header = machine == 0x8664 ?
+		nt_header + 0x0108 :
+		nt_header + 0x00F8;
+
+	for (WORD i = 0; i < *(WORD*)(nt_header + 0x06); i++) {
+		QWORD section = section_header + ((QWORD)i * 40);
+		PCSTR name = (PCSTR)section;
+
+		if (strcmpi_imp(name, ".data"))
 		{
-			QWORD entry    = ((QWORD)dump_client + i);
+			continue;
+		}
 		
+		DWORD section_size = *(DWORD*)(section + 0x08);
+		DWORD section_addr = *(DWORD*)(section + 0x0C);
+
+		for (DWORD j = section_addr; j < section_addr + section_size; j++)
+		{
 			BOOL network_enable = 0;
 			{
-				QWORD ptr_to_name = *(QWORD*)(entry);
-				if (ptr_to_name >= base && ptr_to_name <= (base + size))
+				QWORD ptr_to_name = *(QWORD*)(dos_header + j);
+				if (ptr_to_name >= client_dll && ptr_to_name <= (client_dll + *(QWORD*)(dos_header - 8)))
 				{
-					ptr_to_name = *(QWORD*)((ptr_to_name - base) + (QWORD)dump_client);
-					if (ptr_to_name >= base && ptr_to_name <= (base + size))
+					ptr_to_name = *(QWORD*)((ptr_to_name - client_dll) + dos_header);
+					if (ptr_to_name >= client_dll && ptr_to_name <= (client_dll + *(QWORD*)(dos_header - 8)))
 					{
-						if (!strcmpi_imp((const char*)(ptr_to_name - base) + (QWORD)dump_client, "MNetworkEnable"))
+						if (!strcmpi_imp((const char*)(ptr_to_name - client_dll) + dos_header, "MNetworkEnable"))
 						{
 							network_enable = 1;
 						}
@@ -247,287 +222,200 @@ static BOOL cs::initialize(void)
 				}
 			}
 
-			QWORD name_ptr;
+			QWORD ptr_to_name;
 			if (network_enable == 0)
 			{
-				name_ptr = *(QWORD*)(entry);
-				if (name_ptr < base)
+				ptr_to_name = *(QWORD*)(dos_header + j + 0x00);
+				if (ptr_to_name < client_dll)
 				{
 					continue;
-				}
-				if (name_ptr > (base + size))
+				}	
+				if (ptr_to_name > (client_dll + *(QWORD*)(dos_header - 8)))
 				{
 					continue;
 				}
 			}
 			else
 			{
-				name_ptr = *(QWORD*)(entry + 0x08);
-				if (name_ptr < base)
+				ptr_to_name = *(QWORD*)(dos_header + j + 0x08);
+				if (ptr_to_name < client_dll)
 				{
 					continue;
-				}
-				if (name_ptr > (base + size))
+				}	
+				if (ptr_to_name > (client_dll + *(QWORD*)(dos_header - 8)))
 				{
 					continue;
 				}
 			}
 
-			PCSTR netvar_name = (PCSTR)((name_ptr - base) + (QWORD)dump_client);
+			PCSTR netvar_name = (PCSTR)((ptr_to_name - client_dll) + dos_header);
 
 			if (!netvars::m_iHealth && !strcmpi_imp(netvar_name, "m_iHealth") && network_enable)
 			{
-				LOG("%s, %x\n", netvar_name, *(int*)(entry + 0x08 + 0x10));
-				netvars::m_iHealth = *(int*)(entry + 0x08 + 0x10);
+#ifdef _DEBUG
+				LOG("[offsets] %s -> 0x%x\n", netvar_name, *(int*)(dos_header + j + 0x08 + 0x10));
+#endif // DEBUG
+				netvars::m_iHealth = *(int*)(dos_header + j + 0x08 + 0x10);
 			}
-			else if (!netvars::m_iTeamNum && !strcmpi_imp(netvar_name, "m_iTeamNum") && network_enable)
+			else if (!netvars::m_iTeamNum && !strcmpi_imp(netvar_name,"m_iTeamNum") && network_enable)
 			{
-				LOG("%s, %x\n", netvar_name, *(int*)(entry + 0x08 + 0x10));
-				netvars::m_iTeamNum = *(int*)(entry + 0x08 + 0x10);
+#ifdef _DEBUG
+				LOG("[offsets] %s -> 0x%x\n", netvar_name, *(int*)(dos_header + j + 0x08 + 0x10));
+#endif // DEBUG
+				netvars::m_iTeamNum = *(int*)(dos_header + j + 0x08 + 0x10);
 			}
 			else if (!netvars::m_hPawn && !strcmpi_imp(netvar_name, "m_hPawn") && network_enable)
 			{
-				LOG("%s, %x\n", netvar_name, *(int*)(entry + 0x08 + 0x10));
-				netvars::m_hPawn = *(int*)(entry + 0x08 + 0x10);
+#ifdef _DEBUG
+				LOG("[offsets] %s -> 0x%x\n", netvar_name, *(int*)(dos_header + j + 0x08 + 0x10));
+#endif // DEBUG
+				netvars::m_hPawn = *(int*)(dos_header + j + 0x08 + 0x10);
 			}
 			else if (!netvars::m_lifeState && !strcmpi_imp(netvar_name, "m_lifeState") && network_enable)
 			{
-				LOG("%s, %x\n", netvar_name, *(int*)(entry + 0x08 + 0x10));
-				netvars::m_lifeState = *(int*)(entry + 0x08 + 0x10);
+#ifdef _DEBUG
+				LOG("[offsets] %s -> 0x%x\n", netvar_name, *(int*)(dos_header + j + 0x08 + 0x10));
+#endif // DEBUG
+				netvars::m_lifeState = *(int*)(dos_header + j + 0x08 + 0x10);
 			}
 			else if (!netvars::m_vecViewOffset && !strcmpi_imp(netvar_name, "m_vecViewOffset") && network_enable)
 			{
-				LOG("%s, %x\n", netvar_name, *(int*)(entry + 0x08 + 0x10));
-				netvars::m_vecViewOffset = *(int*)(entry + 0x08 + 0x10);
+#ifdef _DEBUG
+				LOG("[offsets] %s -> 0x%x\n", netvar_name, *(int*)(dos_header + j + 0x08 + 0x10));
+#endif // DEBUG
+				netvars::m_vecViewOffset = *(int*)(dos_header + j + 0x08 + 0x10);
 			}
 			else if (!netvars::m_aimPunchCache && !strcmpi_imp(netvar_name, "m_aimPunchCache") && network_enable)
 			{
-				LOG("%s, %x\n", netvar_name, *(int*)(entry + 0x08 + 0x10));
-				netvars::m_aimPunchCache = *(int*)(entry + 0x08 + 0x10);
+#ifdef _DEBUG
+				LOG("[offsets] %s -> 0x%x\n", netvar_name, *(int*)(dos_header + j + 0x08 + 0x10));
+#endif // DEBUG
+				netvars::m_aimPunchCache = *(int*)(dos_header + j + 0x08 + 0x10);
 			}
 			else if (!netvars::m_iShotsFired && !strcmpi_imp(netvar_name, "m_iShotsFired") && network_enable)
 			{
-				LOG("%s, %x\n", netvar_name, *(int*)(entry + 0x08 + 0x10));
-				netvars::m_iShotsFired = *(int*)(entry + 0x08 + 0x10);
+#ifdef _DEBUG
+				LOG("[offsets] %s -> 0x%x\n", netvar_name, *(int*)(dos_header + j + 0x08 + 0x10));
+#endif // DEBUG
+				netvars::m_iShotsFired = *(int*)(dos_header + j + 0x08 + 0x10);
 			}
 			else if (!netvars::m_angEyeAngles && !strcmpi_imp(netvar_name, "m_angEyeAngles") && network_enable)
 			{
-				LOG("%s, %x\n", netvar_name, *(int*)(entry + 0x08 + 0x10));
-				netvars::m_angEyeAngles = *(int*)(entry + 0x08 + 0x10);
+#ifdef _DEBUG
+				LOG("[offsets] %s -> 0x%x\n", netvar_name, *(int*)(dos_header + j + 0x08 + 0x10));
+#endif // DEBUG
+				netvars::m_angEyeAngles = *(int*)(dos_header + j + 0x08 + 0x10);
 			}
 			else if (!netvars::m_flFOVSensitivityAdjust && !strcmpi_imp(netvar_name, "m_flFOVSensitivityAdjust"))
 			{
-				LOG("%s, %x\n", netvar_name, *(int*)(entry + 0x08));
-				netvars::m_flFOVSensitivityAdjust = *(int*)(entry + 0x08);
+#ifdef _DEBUG
+				LOG("[offsets] %s -> 0x%x\n", netvar_name, *(int*)(dos_header + j + 0x10));
+#endif // DEBUG
+				netvars::m_flFOVSensitivityAdjust = *(int*)(dos_header + j + 0x10);
 			}
 			else if (!netvars::m_pGameSceneNode && !strcmpi_imp(netvar_name, "m_pGameSceneNode"))
 			{
-				LOG("%s, %x\n", netvar_name, *(WORD*)(entry + 0x10));
-				netvars::m_pGameSceneNode = *(WORD*)(entry + 0x10);
+#ifdef _DEBUG
+				LOG("[offsets] %s -> 0x%x\n", netvar_name, *(WORD*)(dos_header + j + 0x10));
+#endif // DEBUG
+				netvars::m_pGameSceneNode = *(WORD*)(dos_header + j + 0x10);
 			}
 			else if (!netvars::m_bDormant && !strcmpi_imp(netvar_name, "m_bDormant"))
 			{
-				LOG("%s, %x\n", netvar_name, *(int*)(entry + 0x08));
-				netvars::m_bDormant = *(int*)(entry + 0x08);
+#ifdef _DEBUG
+				LOG("[offsets] %s -> 0x%x\n", netvar_name, *(int*)(dos_header + j + 0x10));
+#endif // DEBUG
+				netvars::m_bDormant = *(int*)(dos_header + j + 0x10);
 			}
 			else if (!netvars::m_modelState && !strcmpi_imp(netvar_name, "m_modelState"))
 			{
-				LOG("%s, %x\n", netvar_name, *(int*)(entry + 0x08));
-				netvars::m_modelState = *(int*)(entry + 0x08);
+#ifdef _DEBUG
+				LOG("[offsets] %s -> 0x%x\n", netvar_name, *(int*)(dos_header + j + 0x10));
+#endif // DEBUG
+				netvars::m_modelState = *(int*)(dos_header + j + 0x10);
 			}
-			else if (!netvars::m_vecOrigin && !strcmpi_imp(netvar_name, "m_vecOrigin") && network_enable)
+			else if (!netvars::m_vecOrigin && !strcmpi_imp(netvar_name, "m_vecOrigin") && network_enable) // CNetworkOriginCellCoordQuantizedVector
 			{
-				LOG("%s, %x\n", netvar_name, *(int*)(entry + 0x08 + 0x10));
-				netvars::m_vecOrigin = *(int*)(entry + 0x08 + 0x10);
+#ifdef _DEBUG
+				LOG("[offsets] %s -> 0x%x\n", netvar_name, *(int*)(dos_header + j + 0x08 + 0x10));
+#endif // DEBUG
+				netvars::m_vecOrigin = *(int*)(dos_header + j + 0x08 + 0x10);
 			}
 			else if (!netvars::m_iIDEntIndex && !strcmpi_imp(netvar_name, "m_iIDEntIndex") && network_enable)
 			{
-				LOG("%s, %x\n", netvar_name, *(int*)(entry + 0x08 + 0x10));
-				netvars::m_iIDEntIndex = *(int*)(entry + 0x08 + 0x10);
+#ifdef _DEBUG
+				LOG("[offsets] %s -> 0x%x\n", netvar_name, *(int*)(dos_header + j + 0x08 + 0x10));
+#endif // DEBUG
+				netvars::m_iIDEntIndex = *(int*)(dos_header + j + 0x08 + 0x10);
 			}
 			else if (!netvars::m_vOldOrigin && !strcmpi_imp(netvar_name, "m_vOldOrigin"))
 			{
-				LOG("%s, %x\n", netvar_name, *(int*)(entry + 0x10));
-				netvars::m_vOldOrigin = *(int*)(entry + 0x10);
+#ifdef _DEBUG
+				LOG("[offsets] %s -> 0x%x\n", netvar_name, *(int*)(dos_header + j + 0x10));
+#endif // DEBUG
+				netvars::m_vOldOrigin = *(int*)(dos_header + j + 0x10);
 			}
 			else if (!netvars::m_pClippingWeapon && !strcmpi_imp(netvar_name, "m_pClippingWeapon"))
 			{
-				LOG("%s, %x\n", netvar_name, *(int*)(entry + 0x10));
-				netvars::m_pClippingWeapon = *(int*)(entry + 0x10);
+#ifdef _DEBUG
+				LOG("[offsets] %s -> 0x%x\n", netvar_name, *(int*)(dos_header + j + 0x10));
+#endif // DEBUG
+				netvars::m_pClippingWeapon = *(int*)(dos_header + j + 0x10);
 			}
 			else if (!netvars::v_angle && !strcmpi_imp(netvar_name, "v_angle"))
 			{
-				LOG("%s, %x\n", netvar_name, *(int*)(entry + 0x10));
-				netvars::v_angle = *(int*)(entry + 0x10);
+#ifdef _DEBUG
+				LOG("[offsets] %s -> 0x%x\n", netvar_name, *(int*)(dos_header + j + 0x10));
+#endif // DEBUG
+				netvars::v_angle = *(int*)(dos_header + j + 0x10 );
+			}
+			else if (!netvars::m_entitySpottedState && !strcmpi_imp(netvar_name, "m_entitySpottedState") && network_enable)
+			{
+#ifdef _DEBUG
+				LOG("[offsets] %s -> 0x%x\n", netvar_name, 0x1698);
+#endif // DEBUG
+				//netvars::m_entitySpottedState = *(int*)(dos_header + j + 0x08 + 0x10); //public static class C_C4 { // C_CSWeaponBase
+				netvars::m_entitySpottedState = 0x1698;
+			}
+			else if (!netvars::m_bSpottedByMask && !strcmpi_imp(netvar_name, "m_bSpottedByMask") && network_enable)
+			{
+#ifdef _DEBUG
+				LOG("[offsets] %s -> 0x%x\n", netvar_name, *(int*)(dos_header + j + 0x08 + 0x10));
+#endif // DEBUG
+				netvars::m_bSpottedByMask = *(int*)(dos_header + j + 0x08 + 0x10);
+			}
+			else if (!netvars::m_bIsScoped && !strcmpi_imp(netvar_name, "m_bIsScoped"))
+			{
+#ifdef _DEBUG
+				LOG("[offsets] %s -> 0x%x\n", netvar_name, *(int*)(dos_header + j + 0x08 + 0x10));
+#endif // DEBUG
+				netvars::m_bIsScoped = *(int*)(dos_header + j + 0x08 + 0x10);
+			}
+			else if (!netvars::m_AttributeManager && !strcmpi_imp(netvar_name, "m_AttributeManager"))
+			{
+#ifdef _DEBUG
+				LOG("[offsets] %s -> 0x%x\n", netvar_name, 0x1098);
+#endif // DEBUG
+				netvars::m_AttributeManager = 0x1098;
+			}
+			else if (!netvars::m_Item && !strcmpi_imp(netvar_name, "m_Item"))
+			{
+#ifdef _DEBUG
+				LOG("[offsets] %s -> 0x%x\n", netvar_name, *(int*)(dos_header + j + 0x08 + 0x10));
+#endif // DEBUG
+				netvars::m_Item = *(int*)(dos_header + j + 0x08 + 0x10);
+			}
+			else if (!netvars::m_iItemDefinitionIndex && !strcmpi_imp(netvar_name, "m_iItemDefinitionIndex"))
+			{
+#ifdef _DEBUG
+				LOG("[offsets] %s -> 0x%x\n", netvar_name, *(int*)(dos_header + j + 0x10));
+#endif // DEBUG
+				netvars::m_iItemDefinitionIndex = *(int*)(dos_header + j + 0x10);
 			}
 		}
-		vm::free_module(dump_client);
 	}
-	else
-	{
-		PVOID dump_client = vm::dump_module(game_handle, client_dll, VM_MODULE_TYPE::Full);
-		if (dump_client == 0)
-		{
-			goto E1;
-		}
+	vm::free_module(dump_client);
 	
-		QWORD dos_header = (QWORD)dump_client;
-		QWORD nt_header = (QWORD) * (DWORD*)(dos_header + 0x03C) + dos_header;
-		WORD  machine = *(WORD*)(nt_header + 0x4);
-
-		QWORD section_header = machine == 0x8664 ?
-			nt_header + 0x0108 :
-			nt_header + 0x00F8;
-
-		for (WORD i = 0; i < *(WORD*)(nt_header + 0x06); i++) {
-			QWORD section = section_header + ((QWORD)i * 40);
-			PCSTR name = (PCSTR)section;
-
-			if (strcmpi_imp(name, ".data"))
-			{
-				continue;
-			}
-			
-			DWORD section_size = *(DWORD*)(section + 0x08);
-			DWORD section_addr = *(DWORD*)(section + 0x0C);
-
-			for (DWORD j = section_addr; j < section_addr + section_size; j++)
-			{
-				BOOL network_enable = 0;
-				{
-					QWORD ptr_to_name = *(QWORD*)(dos_header + j);
-					if (ptr_to_name >= client_dll && ptr_to_name <= (client_dll + *(QWORD*)(dos_header - 8)))
-					{
-						ptr_to_name = *(QWORD*)((ptr_to_name - client_dll) + dos_header);
-						if (ptr_to_name >= client_dll && ptr_to_name <= (client_dll + *(QWORD*)(dos_header - 8)))
-						{
-							if (!strcmpi_imp((const char*)(ptr_to_name - client_dll) + dos_header, "MNetworkEnable"))
-							{
-								network_enable = 1;
-							}
-						}
-					}
-				}
-
-				QWORD ptr_to_name;
-				if (network_enable == 0)
-				{
-					ptr_to_name = *(QWORD*)(dos_header + j + 0x00);
-					if (ptr_to_name < client_dll)
-					{
-						continue;
-					}	
-					if (ptr_to_name > (client_dll + *(QWORD*)(dos_header - 8)))
-					{
-						continue;
-					}
-				}
-				else
-				{
-					ptr_to_name = *(QWORD*)(dos_header + j + 0x08);
-					if (ptr_to_name < client_dll)
-					{
-						continue;
-					}	
-					if (ptr_to_name > (client_dll + *(QWORD*)(dos_header - 8)))
-					{
-						continue;
-					}
-				}
-
-
-				PCSTR netvar_name = (PCSTR)((ptr_to_name - client_dll) + dos_header);
-
-				if (!netvars::m_iHealth && !strcmpi_imp(netvar_name, "m_iHealth") && network_enable)
-				{
-					LOG("%s, %x\n", netvar_name, *(int*)(dos_header + j + 0x08 + 0x10));
-					netvars::m_iHealth = *(int*)(dos_header + j + 0x08 + 0x10);
-				}
-				else if (!netvars::m_iTeamNum && !strcmpi_imp(netvar_name, "m_iTeamNum") && network_enable)
-				{
-					LOG("%s, %x\n", netvar_name, *(int*)(dos_header + j + 0x08 + 0x10));
-					netvars::m_iTeamNum = *(int*)(dos_header + j + 0x08 + 0x10);
-				}
-				else if (!netvars::m_hPawn && !strcmpi_imp(netvar_name, "m_hPawn") && network_enable)
-				{
-					LOG("%s, %x\n", netvar_name, *(int*)(dos_header + j + 0x08 + 0x10));
-					netvars::m_hPawn = *(int*)(dos_header + j + 0x08 + 0x10);
-				}
-				else if (!netvars::m_lifeState && !strcmpi_imp(netvar_name, "m_lifeState") && network_enable)
-				{
-					LOG("%s, %x\n", netvar_name, *(int*)(dos_header + j + 0x08 + 0x10));
-					netvars::m_lifeState = *(int*)(dos_header + j + 0x08 + 0x10);
-				}
-				else if (!netvars::m_vecViewOffset && !strcmpi_imp(netvar_name, "m_vecViewOffset") && network_enable)
-				{
-					LOG("%s, %x\n", netvar_name, *(int*)(dos_header + j + 0x08 + 0x10));
-					netvars::m_vecViewOffset = *(int*)(dos_header + j + 0x08 + 0x10);
-				}
-				else if (!netvars::m_aimPunchCache && !strcmpi_imp(netvar_name, "m_aimPunchCache") && network_enable)
-				{
-					LOG("%s, %x\n", netvar_name, *(int*)(dos_header + j + 0x08 + 0x10));
-					netvars::m_aimPunchCache = *(int*)(dos_header + j + 0x08 + 0x10);
-				}
-				else if (!netvars::m_iShotsFired && !strcmpi_imp(netvar_name, "m_iShotsFired") && network_enable)
-				{
-					LOG("%s, %x\n", netvar_name, *(int*)(dos_header + j + 0x08 + 0x10));
-					netvars::m_iShotsFired = *(int*)(dos_header + j + 0x08 + 0x10);
-				}
-				else if (!netvars::m_angEyeAngles && !strcmpi_imp(netvar_name, "m_angEyeAngles") && network_enable)
-				{
-					LOG("%s, %x\n", netvar_name, *(int*)(dos_header + j + 0x08 + 0x10));
-					netvars::m_angEyeAngles = *(int*)(dos_header + j + 0x08 + 0x10);
-				}
-				else if (!netvars::m_flFOVSensitivityAdjust && !strcmpi_imp(netvar_name, "m_flFOVSensitivityAdjust"))
-				{
-					LOG("%s, %x\n", netvar_name, *(int*)(dos_header + j + 0x10));
-					netvars::m_flFOVSensitivityAdjust = *(int*)(dos_header + j + 0x10);
-				}
-				else if (!netvars::m_pGameSceneNode && !strcmpi_imp(netvar_name, "m_pGameSceneNode"))
-				{
-					LOG("%s, %x\n", netvar_name, *(WORD*)(dos_header + j + 0x10));
-					netvars::m_pGameSceneNode = *(WORD*)(dos_header + j + 0x10);
-				}
-				else if (!netvars::m_bDormant && !strcmpi_imp(netvar_name, "m_bDormant"))
-				{
-					LOG("%s, %x\n", netvar_name, *(int*)(dos_header + j + 0x10));
-					netvars::m_bDormant = *(int*)(dos_header + j + 0x10);
-				}
-				else if (!netvars::m_modelState && !strcmpi_imp(netvar_name, "m_modelState"))
-				{
-					LOG("%s, %x\n", netvar_name, *(int*)(dos_header + j + 0x10));
-					netvars::m_modelState = *(int*)(dos_header + j + 0x10);
-				}
-				else if (!netvars::m_vecOrigin && !strcmpi_imp(netvar_name, "m_vecOrigin") && network_enable)
-				{
-					LOG("%s, %x\n", netvar_name, *(int*)(dos_header + j + 0x08 + 0x10));
-					netvars::m_vecOrigin = *(int*)(dos_header + j + 0x08 + 0x10);
-				}
-				else if (!netvars::m_iIDEntIndex && !strcmpi_imp(netvar_name, "m_iIDEntIndex") && network_enable)
-				{
-					LOG("%s, %x\n", netvar_name, *(int*)(dos_header + j + 0x08 + 0x10));
-					netvars::m_iIDEntIndex = *(int*)(dos_header + j + 0x08 + 0x10);
-				}
-				else if (!netvars::m_vOldOrigin && !strcmpi_imp(netvar_name, "m_vOldOrigin"))
-				{
-					LOG("%s, %x\n", netvar_name, *(int*)(dos_header + j + 0x10));
-					netvars::m_vOldOrigin = *(int*)(dos_header + j + 0x10);
-				}
-				else if (!netvars::m_pClippingWeapon && !strcmpi_imp(netvar_name, "m_pClippingWeapon"))
-				{
-					LOG("%s, %x\n", netvar_name, *(int*)(dos_header + j + 0x10));
-					netvars::m_pClippingWeapon = *(int*)(dos_header + j + 0x10);
-				}
-				else if (!netvars::v_angle && !strcmpi_imp(netvar_name, "v_angle"))
-				{
-					LOG("%s, %x\n", netvar_name, *(int*)(dos_header + j + 0x10));
-					netvars::v_angle = *(int*)(dos_header + j + 0x10 );
-				}
-			}
-		}
-		vm::free_module(dump_client);
-	}
-
 	JZ(netvars::m_flFOVSensitivityAdjust, E1);
 	JZ(netvars::m_pGameSceneNode, E1);
 	JZ(netvars::m_iHealth, E1);
@@ -543,7 +431,12 @@ static BOOL cs::initialize(void)
 	JZ(netvars::m_angEyeAngles, E1);
 	JZ(netvars::m_iIDEntIndex, E1);
 	JZ(netvars::m_vOldOrigin, E1);
-
+	JZ(netvars::m_entitySpottedState, E1);
+	JZ(netvars::m_bSpottedByMask, E1);
+	JZ(netvars::m_bIsScoped, E1);
+	JZ(netvars::m_AttributeManager, E1); //public static class C_EconEntity { // C_BaseFlex
+	JZ(netvars::m_Item, E1); // public static class C_AttributeContainer
+	JZ(netvars::m_iItemDefinitionIndex, E1);
 
 	return 1;
 }
@@ -589,18 +482,6 @@ QWORD cs::sdl::get_hdc(QWORD window_data)
 
 QWORD cs::sdl::get_mouse(void)
 {
-	/*
-	    0x60 float x;
-	    0x64 float y;
-	    0x68 float xdelta;
-	    0x6C float ydelta;
-	    0x70 float last_x, last_y;
-	    0x78 SDL_bool has_position;
-	    0x79 SDL_bool relative_mode;
-	    0x7A SDL_bool relative_mode_warp;
-	    0x7B SDL_bool relative_mode_warp_motion;
-	    0x7C SDL_bool enable_normal_speed_scale;
-	*/
 	return sdl::sdl_mouse;
 }
 
@@ -645,7 +526,9 @@ QWORD cs::engine::get_convar(const char *name)
 
 		if (!strcmpi_imp(convar_name, name))
 		{
-			LOG("get_convar [%s %p]\n", convar_name, (void *)entry);
+#ifdef _DEBUG
+			LOG("[convar] %s -> %p\n", convar_name, (void*)entry);
+#endif // DEBUG
 			return entry;
 		}
 	}
@@ -656,16 +539,6 @@ DWORD cs::engine::get_current_ms(void)
 {
 	static DWORD offset = vm::read_i32(game_handle, get_interface_function(interfaces::input, 16) + 2);
 	return vm::read_i32(game_handle, interfaces::input + offset);
-}
-
-vec2 cs::engine::get_viewangles(void)
-{
-	vec2 va{};
-	if (!vm::read(game_handle, direct::view_angles, &va, sizeof(va)))
-	{
-		va = {};
-	}
-	return va;
 }
 
 view_matrix_t cs::engine::get_viewmatrix(void)
@@ -693,30 +566,17 @@ QWORD cs::entity::get_client_entity(int index)
 
 BOOL cs::entity::is_player(QWORD controller)
 {
-	if (vm::get_target_os() == VmOs::Linux)
-	{
-		return 1;
-	}
-
 	QWORD vfunc = get_interface_function(controller, 144);
 	if (vfunc == 0)
 		return 0;
 
 	DWORD value = vm::read_i32(game_handle, vfunc);
-	//
-	// mov al, 0x1
-	// ret
-	// cc
-	//
+
 	return value == 0xCCC301B0;
 }
 
 QWORD cs::entity::get_player(QWORD controller)
 {
-	//
-	// 5DC offset might be changing in time
-	// 8B 91 ? 05 00 00 83
-	//
 	DWORD v1 = vm::read_i32(game_handle, controller + netvars::m_hPawn);
 	if (v1 == (DWORD)(-1))
 	{
@@ -728,6 +588,7 @@ QWORD cs::entity::get_player(QWORD controller)
 	{
 		return 0;
 	}
+
 	return vm::read_i64(game_handle, v2 + 120 * (v1 & 0x1FF));
 }
 
@@ -851,6 +712,33 @@ vec2 cs::player::get_viewangle(QWORD player)
 	return value;
 }
 
+DWORD cs::player::get_incross_target(QWORD local_player)
+{
+	int crosshair_id = cs::player::get_crosshair_id(local_player);
+	if (crosshair_id < 1)
+	{
+		return 0;
+	}
+
+	DWORD crosshair_target = cs::entity::get_client_entity(crosshair_id - 1);
+	if (crosshair_target == 0)
+	{
+		return 0;
+	}
+
+	if (cs::player::get_health(crosshair_target) < 1)
+	{
+		return 0;
+	}
+
+	if (cs::player::get_team_num(crosshair_target) == cs::player::get_team_num(local_player))
+	{
+		return 0;
+	}
+
+	return crosshair_target;
+}
+
 cs::WEAPON_CLASS cs::player::get_weapon_class(QWORD player)
 {
 	QWORD weapon = vm::read_i64(game_handle, player + netvars::m_pClippingWeapon);
@@ -860,16 +748,19 @@ cs::WEAPON_CLASS cs::player::get_weapon_class(QWORD player)
 		return cs::WEAPON_CLASS::Invalid;
 	}
 
-	//
-	// C_EconEntity::m_AttributeManager + C_AttributeContainer::m_Item + C_EconItemView::m_iItemDefinitionIndex
-	//
-	WORD weapon_index = vm::read_i16(game_handle, weapon + 0x1098 + 0x50 + 0x1BA);
+	WORD weapon_index = vm::read_i16(game_handle, weapon + netvars::m_AttributeManager + netvars::m_Item + netvars::m_iItemDefinitionIndex);
 
 	/* knife */
 	{
 		WORD data[] = {
 			42, // {"knife"},
-			59,  //{"knife_t"},
+			59,  // {"knife_t"},
+			41, // {"knife_gg"},
+			503, // {"knife_css"},
+			507, // {"knife_karambit"},
+			505, // {"knife_flip"},
+			72, // {"weapon_tablet"},
+			74, // {"weapon_melee"},
 		};
 		for (int i = 0; i < sizeof(data) / sizeof(*data); i++)
 		{
@@ -903,7 +794,6 @@ cs::WEAPON_CLASS cs::player::get_weapon_class(QWORD player)
 	/* pistol */
 	{
 		WORD data[] = {
-			40, // {"ssg08"}, scout and deagle, in my opinion definitely belongs to same category
 			32, // {"hkp2000"},
 			61, // {"usp-s"},
 			1, // {"deagle"},
@@ -912,6 +802,7 @@ cs::WEAPON_CLASS cs::player::get_weapon_class(QWORD player)
 			3, // {"fiveseven"},
 			4, // {"glock"},
 			30, // {"tec9"},
+			63, // {"cz75a"},
 		};
 		for (int i = 0; i < sizeof(data) / sizeof(*data); i++)
 		{
@@ -925,6 +816,7 @@ cs::WEAPON_CLASS cs::player::get_weapon_class(QWORD player)
 	/* sniper */
 	{
 		WORD data[] = {
+			40, // {"ssg08"}
 			9, // {"awp"},
 			38, // {"scar20"},
 			11, // {"g3sg1"},
@@ -938,6 +830,24 @@ cs::WEAPON_CLASS cs::player::get_weapon_class(QWORD player)
 		}
 	}
 
+	/* shotgun */
+	{
+		WORD data[] = {
+			35, // {"nova"}
+			29, // {"sawed-off"},
+			27, // {"mag7"},
+			25, // {"xm"},
+		};
+		for (int i = 0; i < sizeof(data) / sizeof(*data); i++)
+		{
+			if (data[i] == weapon_index)
+			{
+				return cs::WEAPON_CLASS::Shotgun;
+			}
+		}
+	}
+
+	// mp9 - 34,mp7 - 33,p90 - 19, mp5sd - 23, ump - 24, bizon - 26, mac - 17,
 	return cs::WEAPON_CLASS::Rifle;
 }
 
@@ -959,7 +869,7 @@ BOOL cs::player::is_valid(QWORD player, QWORD node)
 		return 0;
 	}
 
-	if (player_health > 150)
+	if (player_health > 111)
 	{
 		return 0;
 	}
@@ -971,6 +881,19 @@ BOOL cs::player::is_valid(QWORD player, QWORD node)
 	}
 
 	return node::get_dormant(node) == 0;
+}
+
+BOOL cs::player::is_visible(QWORD player)
+{
+	int mask = vm::read_i64(game_handle, (QWORD)(player + (netvars::m_entitySpottedState + netvars::m_bSpottedByMask)));
+	int base = vm::read_i64(game_handle, (QWORD)(direct::local_player));
+
+	return (mask & (1 << base)) != 0;
+}
+
+BOOL cs::player::is_scoped(QWORD player)
+{
+	return vm::read_i8(game_handle, player + netvars::m_bIsScoped);
 }
 
 BOOLEAN cs::node::get_dormant(QWORD node)
@@ -990,13 +913,6 @@ vec3 cs::node::get_origin(QWORD node)
 
 BOOL cs::node::get_bone_position(QWORD node, int index, vec3 *data)
 {
-	// get skeleton 
-	// QWORD fun = get_interface_function(node, 8);
-	//
-	// get skeleton:
-	// mov rax, rcx
-	// ret
-	//
 	QWORD skeleton    = node;
 	QWORD model_state = skeleton + netvars::m_modelState;
 	QWORD bone_data   = vm::read_i64(game_handle, model_state + 0x80);
@@ -1018,12 +934,6 @@ static QWORD cs::get_interface(QWORD base, PCSTR name)
 	if (export_address == 0)
 	{
 		return 0;
-	}
-
-	if (vm::get_target_os() == VmOs::Linux)
-	{
-		export_address = vm::get_relative_address(game_handle, export_address, 1, 5);
-		export_address += 0x10;
 	}
 	
 	QWORD interface_entry = vm::read_i64(game_handle, (export_address + 7) + vm::read_i32(game_handle, export_address + 3));
@@ -1047,16 +957,8 @@ static QWORD cs::get_interface(QWORD base, PCSTR name)
 		
 		if (!strcmpi_imp(interface_name, name))
 		{
-			//
-			// lea    rax, [rip+0xXXXXXX]
-			// ret
-			//
 			QWORD vfunc = vm::read_i64(game_handle, interface_entry);
 
-
-			//
-			// emulate vfunc call
-			//
 			QWORD addr = (vfunc + 7) + vm::read_i32(game_handle, vfunc + 3);
 			return addr;
 		}
