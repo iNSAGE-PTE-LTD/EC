@@ -5,36 +5,24 @@
 #include "../../library/math.h"
 
 
-//
-// enables global debug messages
-//
 #define DEBUG
-
-
-
-
-
-
-
-
-
 
 #ifndef _KERNEL_MODE
 #include <stdio.h>
 
 #ifdef DEBUG
-#define LOG(...) printf("[EC] " __VA_ARGS__)
+#define LOG(...) printf("[IN] " __VA_ARGS__)
 #else
-#define LOG(...) // __VA_ARGS__
+#define LOG(...) 
 #endif
 
 
 #else
 
 #ifdef DEBUG
-#define LOG(...) DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[EC] " __VA_ARGS__)
+#define LOG(...) DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[IN] " __VA_ARGS__)
 #else
-#define LOG(...) // __VA_ARGS__
+#define LOG(...) 
 #endif
 
 #endif
@@ -49,6 +37,9 @@ namespace cs
 		Pistol = 3,
 		Sniper = 4,
 		Rifle = 5,
+		Shotgun = 6,
+		Submachinegun = 7,
+		Taser = 8,
 	} ;
 
 	typedef struct
@@ -116,9 +107,12 @@ namespace cs
 		float get_fov_multipler(QWORD player);
 		vec2  get_vec_punch(QWORD player);
 		vec2  get_viewangle(QWORD player);
+		DWORD get_incross_target(QWORD local_player);
 		WEAPON_CLASS get_weapon_class(QWORD player);
 		QWORD get_node(QWORD player);
 		BOOL  is_valid(QWORD player, QWORD node);
+		BOOL  is_visible(QWORD player);
+		BOOL  is_scoped(QWORD player);
 	}
 
 	namespace node
@@ -131,5 +125,5 @@ namespace cs
 	BOOL running(void);
 }
 
-#endif /* cs.h */
+#endif
 
