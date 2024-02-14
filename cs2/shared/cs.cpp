@@ -888,7 +888,7 @@ BOOL cs::player::is_visible(QWORD player)
 	int mask = vm::read_i64(game_handle, (QWORD)(player + (netvars::m_entitySpottedState + netvars::m_bSpottedByMask)));
 	int base = vm::read_i64(game_handle, (QWORD)(direct::local_player));
 
-	return (mask & (1 << base)) != 0;
+	return (mask & (1 << base)) > 0;
 }
 
 BOOL cs::player::is_scoped(QWORD player)
