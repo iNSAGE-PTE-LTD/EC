@@ -1,11 +1,9 @@
 #ifndef GLOBALS_H
 #define GLOBALS_H
 
-
 typedef unsigned long DWORD;
 typedef unsigned long long QWORD;
 typedef int BOOL;
-
 
 void  SwapMemory(QWORD BaseAddress, QWORD ImageSize, QWORD NewBase);
 void  SwapMemory2(QWORD CurrentBase, QWORD NewBase);
@@ -21,11 +19,6 @@ QWORD GetModuleEntry(LIST_ENTRY* entry, const unsigned short *name);
 QWORD FindPattern(QWORD base, unsigned char* pattern, unsigned char* mask);
 void  *FindPatternEx(unsigned char* base, QWORD size, unsigned char* pattern, unsigned char* mask);
 
-
-
-//
-// pe
-//
 BOOL  pe_resolve_imports(QWORD ntoskrnl, QWORD base);
 void  pe_clear_headers(QWORD base);
 QWORD get_pe_entrypoint(QWORD base);
@@ -34,8 +27,8 @@ QWORD get_pe_section(QWORD base, const char *section_name, DWORD *size);
 QWORD GetExportByName(QWORD base, const char* export_name);
 
 
-#define FILENAME L"[bootx64.efi]"
-#define SERVICE_NAME L"EC"
+#define FILENAME L"[insage.ru]"
+#define SERVICE_NAME L"IN"
 
-#endif /* GLOBALS_H */
+#endif
 
