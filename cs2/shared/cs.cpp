@@ -31,9 +31,6 @@ namespace cs
 		static QWORD sensitivity;
 		static QWORD mp_teammates_are_enemies;
 		static QWORD cl_crosshairalpha;
-		static QWORD aimbot_enabled;
-		static QWORD triggerbot_enabled;
-		static QWORD esp_enabled;
 	}
 
 	namespace netvars
@@ -61,6 +58,7 @@ namespace cs
 		static int m_AttributeManager = 0;
 		static int m_Item = 0;
 		static int m_iItemDefinitionIndex = 0;
+		static int m_steamID = 0;
 	}
 
 	static BOOL initialize(void);
@@ -412,6 +410,13 @@ static BOOL cs::initialize(void)
 #endif // DEBUG
 				netvars::m_iItemDefinitionIndex = *(int*)(dos_header + j + 0x10);
 			}
+			else if (!netvars::m_steamID && !strcmpi_imp(netvar_name, "m_steamID") && network_enable)
+			{
+#ifdef _DEBUG
+				LOG("[offsets] %s -> 0x%x\n", netvar_name, *(int*)(dos_header + j + 0x08 + 0x10));
+#endif // DEBUG
+				netvars::m_steamID = *(int*)(dos_header + j + 0x08 + 0x10);
+				}
 		}
 	}
 	vm::free_module(dump_client);
@@ -437,6 +442,7 @@ static BOOL cs::initialize(void)
 	JZ(netvars::m_AttributeManager, E1); //public static class C_EconEntity { // C_BaseFlex
 	JZ(netvars::m_Item, E1); // public static class C_AttributeContainer
 	JZ(netvars::m_iItemDefinitionIndex, E1);
+	JZ(netvars::m_steamID, E1);
 
 	return 1;
 }
@@ -613,6 +619,22 @@ BOOL cs::input::is_button_down(DWORD button)
 	return (v >> (button & 31)) & 1;
 }
 
+BOOL cs::input::button_code()
+{
+	for (int button = 0; button <= 400; button++) //<1000
+	{
+
+		DWORD v = vm::read_i64(game_handle, (QWORD)(interfaces::input + (((QWORD(button) >> 5) * 4) + direct::button_state)));
+
+		if ((v >> (button & 31)) & 1)
+		{
+			LOG(" button pressed key : % d", button);
+		}
+
+		return button;
+	}
+}
+
 DWORD cs::player::get_health(QWORD player)
 {
 	return vm::read_i32(game_handle, player + netvars::m_iHealth);
@@ -691,8 +713,8 @@ vec2 cs::player::get_vec_punch(QWORD player)
 		return data;
 	}
 
-	if (aimpunch_size == 129)
-		aimpunch_size = 130;
+	if (aimpunch_size == 130)
+		aimpunch_size = 129;
 
 	if (!vm::read(game_handle, aim_punch_cache[1] + ((aimpunch_size-1) * 12), &data, sizeof(data)))
 	{
@@ -894,6 +916,11 @@ BOOL cs::player::is_visible(QWORD player)
 BOOL cs::player::is_scoped(QWORD player)
 {
 	return vm::read_i8(game_handle, player + netvars::m_bIsScoped);
+}
+
+BOOL cs::player::get_steam_id(QWORD player)
+{
+	return vm::read_i8(game_handle, player + netvars::m_steamID);
 }
 
 BOOLEAN cs::node::get_dormant(QWORD node)
