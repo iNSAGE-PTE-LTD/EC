@@ -7,15 +7,15 @@ typedef DWORD LFTYPE;
 
 namespace gdi
 {
-	typedef HWND(*GetForegroundWindow_t)();//verified
-	typedef HDC(*GetDC_t)(HWND hwnd);//verified
-	typedef HDC(*GetDCEx_t)(HWND hwnd, HANDLE region, ULONG flags);//verified
-	typedef BOOL(*PatBlt_t)(HDC hdcDest, INT x, INT y, INT cx, INT cy, DWORD dwRop);//verified
-	typedef HBRUSH (*SelectBrush_t)(HDC hdc, HBRUSH hbrush); //verified
-	typedef int (*ReleaseDC_t)(HDC hdc); //verified
-	typedef HBRUSH (*CreateSolidBrush_t)( COLORREF cr, HBRUSH hbr); //verified
-	typedef BOOL (*DeleteObjectApp_t)(HANDLE hobj); //verified
-	typedef BOOL (*ExtTextOutW_t)(IN HDC hDC, //verified
+	typedef HWND(*GetForegroundWindow_t)();//верифед
+	typedef HDC(*GetDC_t)(HWND hwnd);//верифед
+	typedef HDC(*GetDCEx_t)(HWND hwnd, HANDLE region, ULONG flags);//верифед
+	typedef BOOL(*PatBlt_t)(HDC hdcDest, INT x, INT y, INT cx, INT cy, DWORD dwRop);//верифед
+	typedef HBRUSH (*SelectBrush_t)(HDC hdc, HBRUSH hbrush); //верифед
+	typedef int (*ReleaseDC_t)(HDC hdc); //верифед
+	typedef HBRUSH (*CreateSolidBrush_t)( COLORREF cr, HBRUSH hbr); //верифед
+	typedef BOOL (*DeleteObjectApp_t)(HANDLE hobj); //верифед
+	typedef BOOL (*ExtTextOutW_t)(IN HDC hDC, //верифед
 		IN INT 	XStart,
 		IN INT 	YStart,
 		IN UINT 	fuOptions,
@@ -26,7 +26,7 @@ namespace gdi
 		IN DWORD 	dwCodePage
 	);
 	typedef HFONT (*HfontCreate_t)(IN PENUMLOGFONTEXDVW pelfw, IN ULONG cjElfw, IN LFTYPE lft, IN FLONG fl, IN PVOID pvCliData); //verified
-	typedef HFONT (*SelectFont_t)(_In_ HDC 	hdc, //verified
+	typedef HFONT (*SelectFont_t)(_In_ HDC 	hdc, //верифед
 		_In_ HFONT 	hfont
 	);
 
@@ -105,7 +105,6 @@ QWORD GetProcAddressQ(QWORD base, PCSTR export_name)
 	}
 	return 0;
 }
-
 
 QWORD GetModuleEntry(PCWSTR module_name);
 QWORD GetProcAddressQ(QWORD base, PCSTR export_name);
@@ -229,18 +228,13 @@ bool gdi::FillRect(HDC hDC, CONST RECT *lprc, HBRUSH hbr)
 	Ret = NtGdiPatBlt(hDC, lprc->left, lprc->top, lprc->right - lprc->left,
 		lprc->bottom - lprc->top, PATCOPY);
 
-	/* Select old brush */
 	if (prevhbr)
 		NtGdiSelectBrush(hDC, prevhbr);
 
 	return Ret;
 }
 
-
-void gdi::DrawRect(
-	VOID *hwnd,
-	LONG x, LONG y, LONG w, LONG h,
-	unsigned char r, unsigned char g, unsigned char b)
+void gdi::DrawRect(VOID *hwnd,LONG x, LONG y, LONG w, LONG h,unsigned char r, unsigned char g, unsigned char b)
 {
 	if (!gdi::init())
 	{
