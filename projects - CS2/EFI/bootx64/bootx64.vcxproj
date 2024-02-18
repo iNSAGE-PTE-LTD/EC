@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" ToolsVersion="12.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|Win32">
@@ -128,6 +128,9 @@
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <DebuggerFlavor>DbgengKernelDebugger</DebuggerFlavor>
+    <TimeStampServer>http://timestamp.globalsign.com/scripts/timstamp.dll</TimeStampServer>
+    <DisableProductionSignDebugWarnings>false</DisableProductionSignDebugWarnings>
+    <EnableInf2cat>false</EnableInf2cat>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <DebuggerFlavor>DbgengKernelDebugger</DebuggerFlavor>
@@ -135,6 +138,9 @@
     <IncludePath>..\edk2\MdePkg\Include\X64;..\edk2\ShellPkg\Include;..\edk2\CryptoPkg\Include;..\edk2\MdePkg\Include;$(IncludePath)</IncludePath>
     <TargetName>bootx64</TargetName>
     <TargetExt>.efi</TargetExt>
+    <DriverProductionSignMinimalRebuildFromTracking>false</DriverProductionSignMinimalRebuildFromTracking>
+    <DisableProductionSignDebugWarnings>true</DisableProductionSignDebugWarnings>
+    <TimeStampServer />
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|ARM'">
     <DebuggerFlavor>DbgengKernelDebugger</DebuggerFlavor>
@@ -155,7 +161,7 @@
     <Link>
       <GenerateMapFile>true</GenerateMapFile>
       <AdditionalOptions>/EMITPOGOPHASEINFO /DEBUG:NONE /SAFESEH:NO %(AdditionalOptions)</AdditionalOptions>
-      <EntryPointSymbol>EfiMain</EntryPointSymbol>
+      <EntryPointSymbol>UEfiMain</EntryPointSymbol>
       <Profile>false</Profile>
       <ImageHasSafeExceptionHandlers>false</ImageHasSafeExceptionHandlers>
       <GenerateDebugInformation>false</GenerateDebugInformation>
@@ -167,7 +173,13 @@
       <BufferSecurityCheck>false</BufferSecurityCheck>
       <ControlFlowGuard>false</ControlFlowGuard>
       <AdditionalOptions>/GR- %(AdditionalOptions)</AdditionalOptions>
+      <WarningLevel>TurnOffAllWarnings</WarningLevel>
     </ClCompile>
+    <DriverSign>
+      <FileDigestAlgorithm>SHA256</FileDigestAlgorithm>
+    </DriverSign>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <DriverSign>
       <FileDigestAlgorithm>SHA256</FileDigestAlgorithm>
     </DriverSign>
