@@ -29,7 +29,7 @@ namespace mouse
 
 namespace gdi
 {
-	void DrawRect(VOID *hwnd, LONG x, LONG y, LONG w, LONG h, unsigned char r, unsigned char g, unsigned char b);
+	void DrawRect(void *hwnd, LONG x, LONG y, LONG w, LONG h, unsigned char r, unsigned char g, unsigned char b);
 	void DrawFillRect(VOID *hwnd, LONG x, LONG y, LONG w, LONG h, unsigned char r, unsigned char g, unsigned char b);
 }
 
@@ -81,8 +81,7 @@ namespace km
 }
 
 #pragma warning(disable : 4201)
-typedef struct _MOUSE_INPUT_DATA 
-{
+typedef struct _MOUSE_INPUT_DATA {
 	USHORT UnitId;
 	USHORT Flags;
 	union {
@@ -129,7 +128,6 @@ extern "C" NTSYSCALLAPI NTSTATUS ObReferenceObjectByName(
 	__out PVOID* Object
 );
 
-// SDL3.dll:PeekMessageW:NtUserPeekMessage:PsGetThreadWin32Thread
 QWORD __fastcall km::PsGetThreadWin32ThreadHook(QWORD rcx)
 {
 	// get current thread
@@ -167,27 +165,24 @@ QWORD __fastcall km::PsGetThreadWin32ThreadHook(QWORD rcx)
 		return *(QWORD*)(rcx + PsGetThreadWin32ThreadOffset);
 	}
 
-	// cs2 process
 	PEPROCESS process = *(PEPROCESS*)(__readgsqword(0x188) + 0xB8);
 	const char* image_name = PsGetProcessImageFileName(process);
-	QWORD cr3 = *(QWORD*)((QWORD)process + 0x28);
-	if (cr3 == __readcr3())
-	{
-		// explorer.exe
-		if (!gMouseObject.use_mouse)
-		{
-			if (image_name && *(QWORD*)(image_name) == 0x7265726f6c707865)
-			{
-				mouse::open();
-			}
-		}
 
-		// cs2.exe
-		if (image_name && *(QWORD*)image_name == 0x6578652e327363)
+	// explorer.exe
+	if (!gMouseObject.use_mouse)
+	{
+		if (image_name && *(QWORD*)(image_name) == 0x7265726f6c707865)
 		{
-			cs2::run();
+			mouse::open();
 		}
 	}
+
+	// cs2.exe
+	if (image_name && *(QWORD*)image_name == 0x6578652e327363)
+	{
+		cs2::run();
+	}
+
 	return *(QWORD*)(rcx + PsGetThreadWin32ThreadOffset);
 }
 
@@ -240,7 +235,9 @@ BOOLEAN km::initialize(QWORD ntoskrnl)
 
 static BOOL mouse::open(void)
 {
-	if (gMouseObject.use_mouse == 0) {
+
+	if (gMouseObject.use_mouse == 0) 
+	{
 		UNICODE_STRING class_string;
 		RtlInitUnicodeString(&class_string, L"\\Driver\\MouClass");
 		PDRIVER_OBJECT class_driver_object = NULL;
@@ -252,17 +249,18 @@ static BOOL mouse::open(void)
 
 		UNICODE_STRING hid_string;
 		RtlInitUnicodeString(&hid_string, L"\\Driver\\MouHID");
-
 		PDRIVER_OBJECT hid_driver_object = NULL;
 		status = ObReferenceObjectByName(&hid_string, OBJ_CASE_INSENSITIVE, NULL, 0, *IoDriverObjectType, KernelMode, NULL, (PVOID*)&hid_driver_object);
 		if (!NT_SUCCESS(status))
 		{
-			if (class_driver_object) {
+			if (class_driver_object) 
+			{
 				ObfDereferenceObject(class_driver_object);
 			}
 			gMouseObject.use_mouse = 0;
 			return 0;
 		}
+
 
 		PDEVICE_OBJECT hid_device_object = hid_driver_object->DeviceObject;
 		while (hid_device_object && !gMouseObject.service_callback)
@@ -328,9 +326,8 @@ static void mouse::move(long x, long y, unsigned short button_flags)
 	mid.LastX = x;
 	mid.LastY = y;
 	mid.ButtonFlags = button_flags;
-	mid.UnitId = 1; //0?
+	mid.UnitId = 1; //0
 	KeRaiseIrql(DISPATCH_LEVEL, &irql);
 	MouseClassServiceCallback(gMouseObject.mouse_device, &mid, (PMOUSE_INPUT_DATA)&mid + 1, &input_data);
 	KeLowerIrql(irql);
 }
-
