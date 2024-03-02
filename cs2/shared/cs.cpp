@@ -79,7 +79,7 @@ interfaces::player = vm::read_i64(game_handle, interfaces::player);
 */
 
 inline int get_entity_off() { return 0x58; }
-inline int get_button_off() { return 0x0E; }
+inline int get_button_off() { return 0x13; } //0x0E
 
 #ifdef DEBUG
 
